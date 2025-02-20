@@ -168,10 +168,6 @@ class Player {
     this.isPlay ^= 1;
     console.log("play", this.isPlay);
     if(this.isPlay) {
-      this.idxElms = [];
-      for(let s = 0; s < this.step[this.chIdx]; ++s) {
-        this.idxElms.push(document.getElementById(`idx-${s}`));
-      }
       for(let ch = 0; ch < this.chlen; ++ch) {
         this.ptick[ch] = 0;
         this.curStep[ch] = 0;
@@ -208,6 +204,7 @@ class Player {
   }
   layout() {
     this.chlen = this.notes.length;
+    this.maxStep = 0;
     for(let ch=0; ch < this.chlen; ++ch) {
       if(this.pat[ch].length > this.maxStep)
         this.maxStep = this.pat[ch].length, this.chIdx = ch;
@@ -229,6 +226,14 @@ class Player {
       s += "</div>";
     }
     this.elm.innerHTML = s;
+    setTimeout(this.layout2.bind(this), 1000);
+  }
+  layout2() {
+    console.log("layout2");
+    this.idxElms = [];
+      for(let s = 0; s < this.step[this.chIdx]; ++s) {
+        this.idxElms.push(document.getElementById(`idx-${s}`));
+      }
   }
   timer() {
     let tmCur = this.actx.currentTime;
