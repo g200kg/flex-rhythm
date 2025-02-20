@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>FlexRhythm</title>
+<style>
+body {
+  background:#234;
+  color:#fff;
+}
+.pat {
+  display:flex;
+}
+.ptline {
+  height:16px;
+  width:80px;
+  text-align: center;
+}
+.pt {
+  box-sizing: border-box;
+  background:#aaa;
+  width:30px;
+  height:26px;
+  border:1px solid #000;
+  text-align: center;
+}
+.pt2 {
+  box-sizing: border-box;
+  background:#aaa;
+  width:40px;
+  height:26px;
+  border:1px solid #000;
+  text-align: center;
+}
+#playButton {
+  width:80px;
+  height:50px;
+  color:#000;
+}
+#title {
+  font-size:30px;
+}
+#menu {
+  height:60px;
+  display:flex;
+}
+.menuItem, .menuItem a {
+  margin-left:20px;
+  color:#ccf;
+}
+#tempo {
+  width:50px;
+  text-align: center;
+}
+#pattern {
+  width:95%;
+  height:200px;
+  margin:auto;
+  background:#cce;
+  border:1px solid #000;
+  color:#000;
+}
+#patIdx {
+  margin-left:200px;
+}
+.patRow {
+  display:flex;
+  height:60px;
+}
+.patRowName {
+  width:200px;
+  box-sizing: border-box;
+  text-align: center;
+  border:1px solid #000;
+}
+.patStp {
+  width:35px;
+  text-align: center;
+}
+.patItem {
+  flex:1;
+  box-sizing: border-box;
+  border:1px solid #000;
+  text-align: center;
+}
+.patNote {
+  width:30px;
+  text-align: center;
+}
+</style>
+<script src='https://g200kg.github.io/webaudio-tinysynth/webaudio-tinysynth.js'></script>
+<script src="https://g200kg.github.io/webaudio-controls/webaudio-controls.js"></script>
+<script>
+let synth;
+let player;
+let notes = [
+  49, 51, 42, 46, 50, 48, 38, 36
+];
+let pat = [
+  [1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,],
+  [0,0,0,0,1,0,0,0, 1,0,0,0,1,0,0,0,],
+  [0,0,1,1,1,0,1,1, 1,0,1,],
+  [1,0,1,0,0,1,],
+  [0,1,0,1,0,],
+  [1,1,1,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,],
+  [0,0,0,0,1,0,0,0, 0,0,0,0,1,0,],
+  [1,0,0,0,1,0,0,0, 1,0,],
+];
+
+class Player {
+  constructor(elm, synth, notes, pat) {
+    this.elm = elm;
+    this.synth = synth;
+    this.actx = synth.getAudioContext();
+    this.tempo = 120;
+    this.vol = 70;
+    this.bar = 60 / this.tempo * 4;
+    this.step = [];
+    this.maxStep = 0;
+    this.curStep = [];
+    this.chIdx = 0;
+    this.ptick = [];
+    this.idxElms = [];
+    this.notes = notes;
+    this.pat = pat;
+    this.isPlay = 0;
+    this.tmStart = 0;
+    this.elmIdx = null;
+    this.cellCol = ["#88a", "#e02"];
+    this.synth.setMasterVol(0.7);
+    this.layout();
+    this.display();
+    this.elm.addEventListener("click", e=>{
+      if(e.target.id.startsWith("pat")) {
+        const p = e.target.id.split("-");
+        const t = parseInt(p[1]);
+        const s = parseInt(p[2]);
+        console.log(t,s)
+        this.pat[t][s] ^= 1;
+        e.target.style.background = this.cellCol[this.pat[t][s]];
+      }
+    });
+    document.getElementById("knbTempo").addEventListener("input", e=>{
+      this.tempo = e.target.value;
+      this.bar = 60 / this.tempo * 4;
+    });
+    document.getElementById("knbVol").addEventListener("input", e=>{
+      this.synth.setMasterVol(e.target.value * 0.01);
+    });
+    this.elm.addEventListener("change", e=>{
+      console.log(e.target.id);
+      if(e.target.id.startsWith("nam")) {
+        const n = e.target.selectedIndex + 35;
+        const t = parseInt(e.target.id.substring(4));
+        this.notes[t] = n;
+      }
+      else if(e.target.id.startsWith("stp")) {
+        const n = parseInt(e.target.id.substring(4));
+        const v = e.target.value;
+        while(v > this.pat[n].length)
+          this.pat[n].push(0);
+        this.pat[n] = this.pat[n].slice(0,v);
+      }
+      this.layout();
+      this.display();
+    });
+  }
+  play() {
+    this.isPlay ^= 1;
+    console.log("play", this.isPlay);
+    if(this.isPlay) {
+      this.idxElms = [];
+      for(let s = 0; s < this.step[this.chIdx]; ++s) {
+        this.idxElms.push(document.getElementById(`idx-${s}`));
+      }
+      for(let ch = 0; ch < this.chlen; ++ch) {
+        this.ptick[ch] = 0;
+        this.curStep[ch] = 0;
+      }
+      this.tmStart = this.actx.currentTime;
+      this.actx.resume();
+      this.timerId = setInterval(this.timer.bind(this), 100);
+    }
+    else {
+      if(this.timerId)
+        clearInterval(this.timerId);
+    }
+  }
+  display() {
+    for(let ch = 0; ch < this.chlen; ++ch) {
+      for(let s = 0; s < this.step[ch]; ++s) {
+        const e = document.getElementById(`pat-${ch}-${s}`);
+        e.style.background = this.cellCol[this.pat[ch][s]];
+      }
+    }
+  }
+  getName(n) {
+    return this.synth.getTimbreName(1, n);
+  }
+  getOpt(n) {
+    let opt = "";
+    for(let i = 35; i < 81; ++i) {
+      if(n == i)
+        opt += `<option selected>${this.getName(i)}</option>`;
+      else
+        opt += `<option>${this.getName(i)}</option>`;
+    }
+    return opt;
+  }
+  layout() {
+    this.chlen = this.notes.length;
+    for(let ch=0; ch < this.chlen; ++ch) {
+      if(this.pat[ch].length > this.maxStep)
+        this.maxStep = this.pat[ch].length, this.chIdx = ch;
+      this.step[ch] = this.pat[ch].length;
+    }
+    this.elm.style.height = `${(this.chlen + 1) * 60}px`;
+    let s = "<div id='patIdx' class='patRow'>";
+    for(let i = 0; i < this.maxStep; ++i) {
+      s += `<div class='patItem' id='idx-${i}'>${i+1}</div>`;
+    }
+    s += "</div>";
+    for(let ch = 0; ch < this.chlen; ++ch) {
+      s += "<div class='patRow'>";
+      s += `<div class='patRowName'><select id="nam-${ch}">${this.getOpt(this.notes[ch])}</select><br>Step <input class="patStp" id="stp-${ch}" value="${this.step[ch]}"></div>`;
+      s += ``;
+      for(let i = 0; i < this.step[ch]; ++i) {
+        s += `<div class='patItem' id='pat-${ch}-${i}'></div>`;
+      }
+      s += "</div>";
+    }
+    this.elm.innerHTML = s;
+  }
+  timer() {
+    let tmCur = this.actx.currentTime;
+    let tick = tmCur - this.tmStart;
+    for(let ch = 0; ch < this.chlen; ++ch) {
+      const chn = tick * this.step[ch] / this.bar;
+      while(chn >= this.curStep[ch]) {
+        if(this.pat[ch][this.curStep[ch]]) {
+          const t = this.curStep[ch] * this.bar / this.step[ch];
+          synth.noteOn(9, this.notes[ch], 100, this.tmStart + t + 0.2);
+          synth.noteOn(9, this.notes[ch], 0, this.tmStart + t + 0.2 + 0.001);
+        }
+        ++this.curStep[ch];
+      }
+    }
+    if(tick >= this.bar) {
+      tick -= this.bar;
+      this.tmStart = tmCur - tick;
+      for(let ch = 0; ch < this.chlen; ++ch) {
+        this.ptick[ch] -= this.bar;
+        this.curStep[ch] = 0;
+      }
+    }
+    if(this.elmIdx)
+      this.elmIdx.style.background = "#ccc";
+    this.elmIdx = this.idxElms[this.curStep[this.chIdx]];
+    if(this.elmIdx)
+      this.elmIdx.style.background = "#ff8";
+  }
+};
+
+async function init() {
+  console.log("init");
+  synth = new WebAudioTinySynth();
+  await synth.ready();
+  synth.getAudioContext();
+  player = new Player(document.getElementById("pattern"), synth, notes, pat);
+  let playbtn = document.getElementById("playButton");
+  playbtn.addEventListener("click", e=>{
+    player.play();
+  });
+}
+window.onload = init;
+</script>
+</head>
+
+<body>
+<div id="menu">
+  <img src="./images/g200kg160x80.png"><div class="menuItem" id="title">FlexRhythm</div>
+  <button class="menuItem" id="playButton">Play</button>
+  <div class="menuItem">Tempo : <webaudio-knob id="knbTempo" diameter="55" value="120" min="60" max="300"></webaudio-knob><webaudio-param link="knbTempo"></webaudio-param></div>
+  <div class="menuItem">Vol : <webaudio-knob id="knbVol" diameter="55" value="70" min="0" max="100"></webaudio-knob><webaudio-param link="knbVol"></webaudio-param></div>
+  <div class="menuItem">GitHub :<a href="https://github.com/g200kg/flex-rhythm" target="_blank">https://github.com/g200kg/flex-rhythm</a></div>
+</div>
+<hr>
+<div id="pattern">
+
+</div>
+
+</body>
+</html>
